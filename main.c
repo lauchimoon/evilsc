@@ -6,6 +6,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#define PROGRAM_NAME "evilsc"
+
 int get_shift(unsigned long mask) {
   if (mask == 0)
     return 0;
@@ -19,6 +21,8 @@ int get_shift(unsigned long mask) {
 
 int main() {
   Display *dpy = XOpenDisplay(NULL);
+  if (!dpy)
+    return 1;
 
   XWindowAttributes attr;
   XGetWindowAttributes(dpy, XDefaultRootWindow(dpy), &attr);
@@ -31,12 +35,24 @@ int main() {
 
   XImage *im = XGetImage(dpy, XDefaultRootWindow(dpy), x, y, w, h,
                         AllPlanes, ZPixmap);
+  if (!im) {
+    printf("%s: could not read display\n", PROGRAM_NAME);
+    XCloseDisplay(dpy);
+    return 1;
+  }
 
   unsigned char *data;
 
   // Color is stored as BGRA
   if (im->byte_order == LSBFirst) {
     data = malloc(sizeof(unsigned char)*w*h*channels);
+    if (!data) {
+      printf("%s: could not allocate memory for image\n", PROGRAM_NAME);
+      XCloseDisplay(dpy);
+      XFree(im);
+      return 1;
+    }
+
     int rshift = get_shift(im->red_mask);
     int gshift = get_shift(im->green_mask);
     int bshift = get_shift(im->blue_mask);
@@ -60,7 +76,7 @@ int main() {
     data = im->data;
 
   if (!stbi_write_png("out.png", w, h, channels, data, 0))
-    printf(":(\n");
+    printf("%s: there was an error writing output file.\n", PROGRAM_NAME);
 
   free(data);
   XFree(im);
