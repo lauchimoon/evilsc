@@ -19,10 +19,17 @@ int get_shift(unsigned long mask) {
   return shift;
 }
 
-int main() {
+int main(int argc, char **argv) {
+  char *filename_raw = "out";
+  if (argc >= 2)
+    filename_raw = argv[1];
+  int filename_raw_len = strlen(filename_raw);
+
   Display *dpy = XOpenDisplay(NULL);
-  if (!dpy)
+  if (!dpy) {
+    printf("%s: could not open display.\n", PROGRAM_NAME);
     return 1;
+  }
 
   XWindowAttributes attr;
   XGetWindowAttributes(dpy, XDefaultRootWindow(dpy), &attr);
@@ -36,18 +43,18 @@ int main() {
   XImage *im = XGetImage(dpy, XDefaultRootWindow(dpy), x, y, w, h,
                         AllPlanes, ZPixmap);
   if (!im) {
-    printf("%s: could not read display\n", PROGRAM_NAME);
+    printf("%s: could not read display.\n", PROGRAM_NAME);
     XCloseDisplay(dpy);
     return 1;
   }
 
-  unsigned char *data;
+  char *data;
 
   // Color is stored as BGRA
   if (im->byte_order == LSBFirst) {
-    data = malloc(sizeof(unsigned char)*w*h*channels);
+    data = malloc(sizeof(char)*w*h*channels);
     if (!data) {
-      printf("%s: could not allocate memory for image\n", PROGRAM_NAME);
+      printf("%s: could not allocate memory for image.\n", PROGRAM_NAME);
       XCloseDisplay(dpy);
       XFree(im);
       return 1;
@@ -75,9 +82,16 @@ int main() {
   } else
     data = im->data;
 
-  if (!stbi_write_png("out.png", w, h, channels, data, 0))
-    printf("%s: there was an error writing output file.\n", PROGRAM_NAME);
+  char *output_filename = calloc(filename_raw_len + 4 + 1, sizeof(char)); // .png + '\0'
+  strcat(output_filename, filename_raw);
 
+  if (!strstr(output_filename, ".png"))
+    strcat(output_filename, ".png");
+
+  if (!stbi_write_png(output_filename, w, h, channels, data, 0))
+    printf("%s: there was an error writing to '%s'.\n", PROGRAM_NAME, output_filename);
+
+  free(output_filename);
   free(data);
   XFree(im);
   XCloseDisplay(dpy);
