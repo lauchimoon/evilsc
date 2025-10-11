@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <ctype.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
@@ -7,6 +9,8 @@
 #include "stb_image_write.h"
 
 #define PROGRAM_NAME "evilsc"
+#define DEFAULT_FNAME "out"
+#define DEFAULT_DELAY 0
 
 int get_shift(unsigned long mask) {
   if (mask == 0)
@@ -19,11 +23,29 @@ int get_shift(unsigned long mask) {
   return shift;
 }
 
+int numeric(char *s) {
+  for (int i = 0; s[i]; ++i)
+    if (!isdigit(s[i]))
+      return 0;
+
+  return 1;
+}
+
 int main(int argc, char **argv) {
-  char *filename_raw = "out";
+  char *filename_raw = DEFAULT_FNAME;
+  int delay = DEFAULT_DELAY;
   if (argc >= 2)
     filename_raw = argv[1];
   int filename_raw_len = strlen(filename_raw);
+
+  if (argc >= 3) {
+    if (!numeric(argv[2])) {
+      printf("%s: delay parameter ('%s') must be numeric.\n", PROGRAM_NAME, argv[2]);
+      return 1;
+    }
+
+    delay = atoi(argv[2]);
+  }
 
   Display *dpy = XOpenDisplay(NULL);
   if (!dpy) {
@@ -39,6 +61,9 @@ int main(int argc, char **argv) {
   int w = attr.width;
   int h = attr.height;
   int channels = 4;
+
+  if (delay > 0)
+    usleep(delay*1000000);
 
   XImage *im = XGetImage(dpy, XDefaultRootWindow(dpy), x, y, w, h,
                         AllPlanes, ZPixmap);
