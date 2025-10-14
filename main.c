@@ -12,6 +12,11 @@
 #define DEFAULT_FNAME "out"
 #define DEFAULT_DELAY 0
 
+#define streq(a, b) (strcmp((a), (b)) == 0)
+
+char *filename_raw = DEFAULT_FNAME;
+int delay = DEFAULT_DELAY;
+
 int get_shift(unsigned long mask) {
   if (mask == 0)
     return 0;
@@ -31,21 +36,31 @@ int numeric(char *s) {
   return 1;
 }
 
-int main(int argc, char **argv) {
-  char *filename_raw = DEFAULT_FNAME;
-  int delay = DEFAULT_DELAY;
-  if (argc >= 2)
-    filename_raw = argv[1];
-  int filename_raw_len = strlen(filename_raw);
+int process_args(int argc, char **argv) {
+  for (int i = 1; i < argc; ++i) {
+    if (streq(argv[i], "-o") || streq(argv[i], "--output"))
+      filename_raw = argv[i + 1];
 
-  if (argc >= 3) {
-    if (!numeric(argv[2])) {
-      printf("%s: delay parameter ('%s') must be numeric.\n", PROGRAM_NAME, argv[2]);
-      return 1;
+    if (streq(argv[i], "-d") || streq(argv[i], "--delay")) {
+      int index = i + 1;
+      if (!numeric(argv[index])) {
+        printf("%s: delay parameter ('%s') must be numeric.\n", PROGRAM_NAME, argv[index]);
+        return 1;
+      }
+
+      delay = atoi(argv[index]);
     }
-
-    delay = atoi(argv[2]);
   }
+
+  return 0;
+}
+
+int main(int argc, char **argv) {
+  int result = process_args(argc, argv);
+  if (result > 0)
+    return 1;
+
+  int filename_raw_len = strlen(filename_raw);
 
   Display *dpy = XOpenDisplay(NULL);
   if (!dpy) {
