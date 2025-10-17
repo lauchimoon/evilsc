@@ -16,18 +16,22 @@
 
 char *filename_raw = DEFAULT_FNAME;
 int delay = DEFAULT_DELAY;
+int ss_x = 0;
+int ss_y = 0;
+int ss_w = 0;
+int ss_h = 0;
 
 int process_args(int argc, char **argv);
 int numeric(char *s);
-XImage *take_display_screenshot(Display *dpy, XWindowAttributes attr);
-char *write_screenshot_to_buffer(Display *dpy, XImage *im,
-                                 XWindowAttributes attr, int channels);
+int get_geometry(char *s);
+XImage *take_display_screenshot(Display *dpy);
+char *write_screenshot_to_buffer(Display *dpy, XImage *im, int channels);
 void write_bgra(char *data, XImage *im, int w, int h);
 int get_shift(unsigned long mask);
 void write_pixel(char *data, XImage *im, unsigned long pix,
                  int x, int y, int w,
                  int rshift, int gshift, int bshift);
-void save_screenshot(char *data, XWindowAttributes attr, int channels);
+void save_screenshot(char *data, int channels);
 char *make_filename(void);
 
 int main(int argc, char **argv) {
@@ -44,10 +48,15 @@ int main(int argc, char **argv) {
   XWindowAttributes attr;
   XGetWindowAttributes(dpy, XDefaultRootWindow(dpy), &attr);
 
+  if (ss_x < 0 || ss_x >= attr.width) ss_x = 0;
+  if (ss_y < 0 || ss_y >= attr.height) ss_y = 0;
+  if (ss_w == 0 || ss_x + ss_w > attr.width) ss_w = attr.width;
+  if (ss_h == 0 || ss_y + ss_h > attr.height) ss_h = attr.height;
+
   if (delay > 0)
     usleep(delay*1000000);
 
-  XImage *screenshot = take_display_screenshot(dpy, attr);
+  XImage *screenshot = take_display_screenshot(dpy);
   if (!screenshot) {
     printf("%s: could not read display.\n", PROGRAM_NAME);
     XCloseDisplay(dpy);
@@ -55,7 +64,7 @@ int main(int argc, char **argv) {
   }
 
   int channels = 4;
-  char *data = write_screenshot_to_buffer(dpy, screenshot, attr, channels);
+  char *data = write_screenshot_to_buffer(dpy, screenshot, channels);
   if (!data) {
     printf("%s: could not allocate memory for image.\n", PROGRAM_NAME);
     XCloseDisplay(dpy);
@@ -63,7 +72,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  save_screenshot(data, attr, channels);
+  save_screenshot(data, channels);
 
   free(data);
   XFree(screenshot);
@@ -85,6 +94,14 @@ int process_args(int argc, char **argv) {
 
       delay = atoi(argv[index]);
     }
+
+    if (streq(argv[i], "-g") || streq(argv[i], "--geometry")) {
+      int result = get_geometry(argv[i + 1]);
+      if (result > 0) {
+        printf("%s: geometry parameter has the form XxYxWxH.\n  X, Y, W, H are numbers.\n", PROGRAM_NAME);
+        return 1;
+      }
+    }
   }
 
   return 0;
@@ -98,29 +115,39 @@ int numeric(char *s) {
   return 1;
 }
 
-XImage *take_display_screenshot(Display *dpy, XWindowAttributes attr) {
-  int x = 0;
-  int y = 0;
-  int w = attr.width;
-  int h = attr.height;
+int get_geometry(char *s) {
+  int values[4] = { 0 };
+  int value_idx = 0;
+  char *p = strtok(s, "x");
 
-  return XGetImage(dpy, XDefaultRootWindow(dpy), x, y, w, h,
+  while (p) {
+    if (!numeric(p))
+      return 1;
+
+    values[value_idx++] = atoi(p);
+    p = strtok(NULL, "x");
+  }
+
+  ss_x = values[0]; ss_y = values[1];
+  ss_w = values[2]; ss_h = values[3];
+  return 0;
+}
+
+XImage *take_display_screenshot(Display *dpy) {
+  return XGetImage(dpy, XDefaultRootWindow(dpy), ss_x, ss_y, ss_w, ss_h,
                    AllPlanes, ZPixmap);
 }
 
-char *write_screenshot_to_buffer(Display *dpy, XImage *im,
-                             XWindowAttributes attr, int channels) {
-  int w = attr.width;
-  int h = attr.height;
+char *write_screenshot_to_buffer(Display *dpy, XImage *im, int channels) {
   char *data;
 
   // Color is stored as BGRA
   if (im->byte_order == LSBFirst) {
-    data = malloc(sizeof(char)*w*h*channels);
+    data = malloc(sizeof(char)*ss_w*ss_h*channels);
     if (!data)
       return NULL;
 
-    write_bgra(data, im, w, h);
+    write_bgra(data, im, ss_w, ss_h);
   } else
     data = im->data;
 
@@ -164,17 +191,14 @@ void write_pixel(char *data, XImage *im, unsigned long pix,
   data[idx + 3] = 0xff;
 }
 
-void save_screenshot(char *data, XWindowAttributes attr, int channels) {
-  int w = attr.width;
-  int h = attr.height;
-
+void save_screenshot(char *data, int channels) {
   char *output_filename = make_filename();
   if (!output_filename) {
     printf("%s: could not allocate memory for filename.\n", PROGRAM_NAME);
     return;
   }
 
-  if (!stbi_write_png(output_filename, w, h, channels, data, 0))
+  if (!stbi_write_png(output_filename, ss_w, ss_h, channels, data, 0))
     printf("%s: there was an error writing to '%s'.\n", PROGRAM_NAME, output_filename);
 
   free(output_filename);
